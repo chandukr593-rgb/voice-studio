@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Voice Studio</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,sans-serif;background:#101321;color:#fff}
+header{background:#191f35;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.logo{font-size:21px;font-weight:bold;color:#8b9cff;cursor:pointer}
+.header-right,.row,.member-header{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.user-badge{display:flex;align-items:center;gap:8px;background:#11182b;border:1px solid #394566;padding:6px 12px;border-radius:30px;font-size:13px;font-weight:bold}
+.avatar{width:34px;height:34px;border-radius:50%;object-fit:cover;background:#303b61;display:inline-flex;align-items:center;justify-content:center;font-weight:bold;color:#fff;font-size:14px;border:1px solid #6578ff;flex-shrink:0}
+.avatar-lg{width:54px;height:54px;font-size:20px}
+.container{max-width:950px;margin:auto;padding:16px}
+.card{background:#1b2239;border:1px solid #303955;border-radius:14px;padding:18px;margin-bottom:17px}
+h2{margin-top:0;color:#aab6ff;font-size:21px}
+h3{color:#b7c2ff;margin-top:0}
+input,textarea,select{width:100%;padding:13px;margin:8px 0 14px;border:1px solid #465174;border-radius:9px;background:#11182b;color:#fff;font-size:15px}
+input[readonly]{background:#182138;color:#7ee0b2;border-color:#2f6b56;cursor:not-allowed}
+textarea{min-height:120px;resize:vertical}
+button,.btn-link{display:inline-block;text-decoration:none;border:0;padding:11px 15px;border-radius:9px;background:#6578ff;color:#fff;font-size:14px;font-weight:bold;cursor:pointer;margin:4px 3px 4px 0;text-align:center}
+button:hover,.btn-link:hover{opacity:.85}
+button:disabled{opacity:.5;cursor:not-allowed}
+.green{background:#19a875}.red{background:#e34d63}.gray{background:#465174}.orange{background:#bd7b2e}
+.telegram{background:#24A1DE;width:100%;font-size:15px;margin-bottom:10px}
+.google{background:#fff;color:#333;width:100%;font-size:16px}
+.google-box{background:#11182b;border:1px solid #465174;border-radius:12px;padding:16px;margin-top:12px}
+.hidden{display:none!important}
+.row button{flex:1}
+small{color:#aab2c9;display:block;margin-top:4px}
+.note{color:#b9c1d9;font-size:13px;line-height:1.6}
+.status{color:#7ee0b2;font-size:14px;margin-top:10px}
+.bad{color:#ff8291}.good{color:#75e0ad}
+audio{width:100%;margin-top:10px}
+hr{border:0;border-top:1px solid #394566;margin:18px 0}
+footer{text-align:center;color:#7e89a9;padding:20px;font-size:12px}
+.progress-wrap{width:100%;background:#11182b;border:1px solid #465174;border-radius:10px;height:14px;overflow:hidden;margin-top:10px}
+.progress-fill{height:100%;width:0%;background:linear-gradient(90deg,#19a875,#6578ff);transition:width 0.25s}
+</style>
+</head>
+<body>
+
+<header>
+ <div class="logo" onclick="goHome()">🎙 Voice Studio</div>
+ <div class="header-right">
+  <div id="memberHeaderControls" class="hidden" style="display:flex;align-items:center;gap:8px">
+   <div class="user-badge">
+    <img id="headerAvatarImg" class="avatar hidden" alt="Profile">
+    <span id="headerAvatarText" class="avatar">U</span>
+    <span id="headerFullName">Member</span>
+   </div>
+   <button class="gray" onclick="toggleSettings()">⚙️ Settings</button>
+  </div>
+  <button class="orange" onclick="openContactPage()">📞 Contact</button>
+ </div>
+</header>
+
+<div class="container">
+<section id="noLoginColabPage" class="hidden">
+ <div class="card" style="border-color:#19a875">
+  <h2>🤖 Admin Colab URL Manager (No Login)</h2>
+  <p class="note">यह पेज सीधे Telegram Bot से खुला है — यहाँ Login की ज़रूरत नहीं है!</p>
+  <label>🔗 Live Colab Server URL</label>
+  <input id="helperCurrentServerUrl" readonly placeholder="अभी कोई URL नहीं है">
+  <div class="row">
+   <button class="green" onclick="copyTextValue('helperCurrentServerUrl','Live URL')">📋 Copy Live URL</button>
+   <button onclick="testHelperServer()">⚡ Test Status</button>
+  </div>
+  <hr>
+  <label>📓 Colab Notebook लिंक</label>
+  <input id="helperNotebookUrl" readonly>
+  <div class="row">
+   <a id="helperOpenColabBtn" href="https://colab.research.google.com/" target="_blank" rel="noopener noreferrer" class="btn-link orange" style="flex:1">🚀 Open Google Colab</a>
+   <button class="gray" style="flex:1" onclick="copyTextValue('helperNotebookUrl','Notebook लिंक')">📋 Copy Notebook</button>
+  </div>
+  <hr>
+  <label>➕ नया Colab URL Save करें</label>
+  <input id="helperNewServerUrl" placeholder="https://xxxx.trycloudflare.com">
+  <button class="green" style="width:100%" id="helperSaveBtn" onclick="saveHelperServerUrl()">💾 Save & Update Website</button>
+  <div id="helperStatus" class="status"></div>
+ </div>
+</section>
+
+<section id="homePage">
+ <div class="card">
+  <h2>Welcome to Voice Studio</h2>
+  <p>AI Voice Cloning और Text-to-Speech इस्तेमाल करने के लिए Login करें।</p>
+  <button class="green" onclick="showPage('memberLogin')">Member Login / Sign Up</button>
+  <div id="homeSessionBar" class="hidden" style="margin-top:14px">
+   <hr><p class="good" id="homeLoggedInNote"></p>
+   <button class="green" onclick="resumeSession()">मेरे Studio पर जाएं ➔</button>
+   <button class="red" onclick="logout()">Logout</button>
+  </div>
+ </div>
+</section>
+
+<section id="contactPage" class="hidden">
+ <div class="card">
+  <h2>📞 Contact Us</h2>
+  <div id="telegramContactSection" class="hidden">
+   <p class="note">Telegram पर बात करने के लिए नीचे क्लिक करें:</p>
+   <a id="publicTelegramLink" href="#" target="_blank" rel="noopener noreferrer" class="btn-link telegram">✈️ Contact on Telegram</a><hr>
+  </div>
+  <label>आपका नाम</label><input id="contactName" placeholder="अपना नाम लिखें">
+  <label>आपका Gmail</label><input id="contactEmail" type="email" placeholder="अपना Gmail लिखें">
+  <label>संदेश</label><textarea id="contactMessage" placeholder="अपना संदेश लिखें..."></textarea>
+  <button class="green" id="sendContactBtn" onclick="sendContact()">Send Message</button>
+  <button class="gray" onclick="goHome()">Back</button>
+  <div id="contactStatus" class="status"></div>
+ </div>
+</section>
+
+<section id="memberLogin" class="hidden">
+ <div class="card">
+  <h2>Sign Up</h2>
+  <button class="google" onclick="loginWithGoogle()">🌐 Continue with Google</button>
+  <div id="googleDetailsBox" class="google-box hidden">
+   <h3>✅ Sign Up पूरा करें</h3>
+   <p class="note">अपना Username और Password डालकर आगे बढ़ें (एक ही Name/Username दोबारा नहीं बनेगा):</p>
+   <label>नाम (Name)</label><input id="googleName" readonly>
+   <label>यूज़रनेम (Username)</label><input id="googleUsername" placeholder="कम से कम 3 अक्षर">
+   <label>Gmail</label><input id="selectedGoogleGmailInput" type="email" readonly>
+   <label>पासवर्ड (Password)</label><input id="googlePass" type="password" placeholder="कम से कम 6 अक्षर">
+   <button class="green" style="width:100%" id="googleFinishBtn" onclick="completeGoogleSignUp()">Next ➔</button>
+   <div id="googleFinishStatus" class="status"></div>
+  </div>
+  <hr>
+  <h3>Sign In</h3>
+  <label>Username or Email</label><input id="memberEmail" placeholder="Username या Email">
+  <label>Password</label><input id="memberPassword" type="password" placeholder="Password">
+  <button class="green" id="memberLoginBtn" onclick="memberLogin()">Sign In</button>
+  <button class="orange" onclick="openForgotPassword()">Forgot Password?</button>
+  <button class="gray" onclick="goHome()">Back</button>
+  <div id="memberLoginStatus" class="status"></div>
+
+  <div id="forgotPasswordBox" class="google-box hidden">
+   <h3>🔑 Forgot Password</h3>
+   <input id="forgotEmailInput" type="email" placeholder="example@gmail.com">
+   <button class="green" onclick="sendForgotResetEmail()">Send Reset Link</button>
+   <button class="gray" onclick="closeForgotPassword()">Cancel</button>
+   <div id="forgotStatus" class="status"></div>
+  </div>
+  <div id="resetPasswordBox" class="google-box hidden">
+   <h3>🔐 नया Password सेट करें</h3>
+   <input id="resetNewPassInput" type="password" placeholder="नया Password (6+ अक्षर)">
+   <input id="resetConfirmPassInput" type="password" placeholder="Password Confirm करें">
+   <button class="green" style="width:100%" onclick="completePasswordReset()">Save Password ➔</button>
+   <div id="resetPassStatus" class="status"></div>
+  </div>
+ </div>
+</section>
+
+<section id="memberPage" class="hidden">
+ <div id="memberNoticeBanner" class="card hidden" style="border-color:#bd7b2e;background:#232033">
+  <strong style="color:#ffc168;font-size:15px">📢 Admin Notice</strong>
+  <p id="memberNoticeText" class="note" style="color:#fff;margin:6px 0 0;white-space:pre-wrap"></p>
+ </div>
+
+ <div id="memberSettingsCard" class="card hidden" style="border-color:#6578ff">
+  <h2>⚙️ Profile Settings</h2>
+  <div class="member-header">
+   <img id="settingsAvatarImg" class="avatar avatar-lg hidden" alt="Profile">
+   <span id="settingsAvatarText" class="avatar avatar-lg">U</span>
+   <div><strong id="settingsDisplayName">Member</strong><small id="settingsDisplayEmail"></small></div>
+  </div>
+  <label>🖼️ प्रोफाइल फोटो बदलें</label><input id="profilePhotoInput" type="file" accept="image/*" onchange="uploadProfilePhoto(event)">
+  <label>👤 नया Username</label><input id="editUsernameInput" placeholder="नया Username">
+  <button class="green" onclick="updateMemberUsername()">Save Username</button>
+  <hr>
+  <label>🔑 नया Password</label>
+  <input id="editMemberNewPass" type="password" placeholder="नया Password (6+ अक्षर)">
+  <input id="editMemberConfirmPass" type="password" placeholder="दोबारा लिखें">
+  <button class="orange" onclick="updateMemberPassword()">Update Password</button>
+  <button class="gray" onclick="toggleSettings()">Close</button>
+  <button class="red" onclick="logout()">Logout</button>
+  <div id="memberSettingsStatus" class="status"></div>
+ </div>
+
+ <div class="card">
+  <h2>🎙 Select Voice Character</h2>
+  <button class="gray" style="margin-bottom:10px" onclick="openMemberDashboard()">🔄 Refresh Voices</button>
+  <select id="voiceSelect" onchange="selectVoice()"><option value="">Select Voice Character</option></select>
+  <div id="memberVoiceInfo" class="status"></div>
+  <div id="samplePreview"></div>
+ </div>
+
+ <div class="card">
+  <h2>📝 Text to Speech (Voice Cloning & MP3)</h2>
+  <label>Your Script (अधिकतम 3,500 शब्द)</label>
+  <textarea id="scriptText" placeholder="यहाँ Script लिखें या Paste करें..." oninput="updateScriptWordCount()"></textarea>
+  <small id="scriptWordCount" style="margin-top:-8px;margin-bottom:10px">Words: 0 / 3,500 • Characters: 0</small>
+  <label>Language</label>
+  <select id="language"><option value="hi-IN">Hindi</option><option value="en-US">English</option></select>
+  <div class="row">
+   <button class="green" id="generateAiBtn" onclick="generateAndPlayAI()">🎙️ Clone & Play AI Voice</button>
+   <button class="orange" id="downloadMp3Btn" onclick="downloadAudio()">⬇ Download MP3</button>
+  </div>
+  <div class="row">
+   <button class="gray" onclick="playScript()">🔊 Browser Preview (Free)</button>
+   <button class="red" onclick="stopScript()">■ Stop</button>
+  </div>
+  <div id="aiProgressBox" class="hidden" style="margin-top:12px">
+   <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+    <small id="aiProgressText" class="good" style="margin:0">तैयार हो रहा है...</small>
+    <button class="red" style="padding:6px 10px;font-size:12px;margin:0" onclick="cancelAiGeneration()">⏹ Cancel</button>
+   </div>
+   <div class="progress-wrap"><div id="aiProgressBar" class="progress-fill"></div></div>
+  </div>
+  <div id="generatedAudioBox" class="hidden" style="margin-top:12px">
+   <small class="good">✅ आपकी क्लोन की हुई AI Voice तैयार है:</small>
+   <audio id="generatedAiAudio" controls></audio>
+  </div>
+  <div id="memberStatus" class="status"></div>
+  <p class="note">3,500 शब्द तक सामान्य स्पीड में क्लोन होकर पूरी <b>.mp3</b> फाइल बनती है।</p>
+ </div>
+
+ <div class="card">
+  <h2>🎤 Upload Your Audio Sample</h2>
+  <div id="uploadPermissionMessage" class="note"></div>
+  <div id="memberUploadForm" class="hidden">
+   <label>Character Name</label><input id="memberCharacterName" placeholder="Character Name">
+   <label>Audio Sample (10-25 sec)</label><input id="memberVoiceFile" type="file" accept="audio/*">
+   <button class="green" id="memberUploadBtn" onclick="addMemberVoice()">Upload Audio</button>
+   <div id="memberUploadStatus" class="status"></div>
+  </div>
+ </div>
+</section>
+</div>
+<footer>Voice Studio</footer>
+<script src="app.js"></script>
+</body>
+</html>
