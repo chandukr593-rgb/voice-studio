@@ -233,6 +233,21 @@ function splitChunks(text,max=220){
 }
 function cancelAiGeneration(){aiCancelled=true;if(aiAbort){aiAbort.abort();aiAbort=null}}
 
+function showGeneratedPlayer(blob,vid){
+ if(generatedMp3Url)URL.revokeObjectURL(generatedMp3Url);
+ generatedMp3Url=URL.createObjectURL(blob);
+ const au=$("generatedAiAudio");au.src=generatedMp3Url;au.playbackRate=1;
+ const box=$("generatedAudioBox");box.classList.remove("hidden");
+ const v=voices.find(x=>String(x.id)===String(vid));
+ const raw=(v?v.name:"voice_studio").replace(/[^a-zA-Z0-9_-]/g,"").replace(/^_+|_+$/g,"")||"voice_studio";
+ const fname=raw+"_cloned.mp3";
+ let dl=$("directMp3SaveLink");
+ if(!dl){dl=document.createElement("a");dl.id="directMp3SaveLink";dl.className="btn-link orange";dl.style.width="100%";dl.style.marginTop="8px";box.appendChild(dl)}
+ dl.href=generatedMp3Url;dl.download=fname;
+ dl.textContent="⬇ Save MP3 File ("+Math.max(1,Math.round(blob.size/1024))+" KB)";
+ return{url:generatedMp3Url,vid,fname};
+}
+
 async function generateAiVoiceBlob(){
  await loadSiteSettings();
  const text=$("scriptText").value.trim(),lang=$("language").value,vid=$("voiceSelect").value,st=$("memberStatus");
@@ -240,7 +255,11 @@ async function generateAiVoiceBlob(){
  const wc=getWords(text);if(wc>MAX_WORDS)return alert("अधिकतम "+MAX_WORDS+" शब्द ही लिखें (अभी: "+wc+")।");
  const v=voices.find(x=>String(x.id)===vid);if(!v?.audio_url)return alert("इस Character में Audio Sample नहीं है।");
  if(!aiServerUrl){st.textContent="❌ AI Cloning Server अभी बंद है (Admin से चालू करवाएं या Browser Preview चलाएं)।";st.className="status bad";return null}
- const key=vid+"::"+lang+"::"+text;if(generatedMp3Url&&lastGeneratedKey===key)return{url:generatedMp3Url,vid};
+ const key=vid+"::"+lang+"::"+text;
+ if(generatedMp3Url&&lastGeneratedKey===key){
+  const dl=$("directMp3SaveLink");
+  return{url:generatedMp3Url,vid,fname:dl?dl.download:"voice_studio_cloned.mp3"};
+ }
  const chunks=splitChunks(text,220),blobs=[],gb=$("generateAiBtn"),db=$("downloadMp3Btn");
  aiCancelled=false;aiAbort=new AbortController();gb.disabled=db.disabled=true;$("aiProgressBox").classList.remove("hidden");$("aiProgressBar").style.width="0%";
  st.textContent="🎙️ Voice Cloning शुरू (हिस्से: "+chunks.length+")...";st.className="status";
@@ -252,16 +271,25 @@ async function generateAiVoiceBlob(){
   }
   if(!blobs.length){st.textContent="⚠️ रद्द किया गया।";st.className="status bad";return null}
   $("aiProgressBar").style.width="100%";$("aiProgressText").textContent="✅ "+blobs.length+" / "+chunks.length+" हिस्से तैयार!";
-  if(generatedMp3Url)URL.revokeObjectURL(generatedMp3Url);generatedMp3Url=URL.createObjectURL(new Blob(blobs,{type:"audio/mpeg"}));lastGeneratedKey=aiCancelled?"":key;
-  const au=$("generatedAiAudio");au.src=generatedMp3Url;au.playbackRate=1;$("generatedAudioBox").classList.remove("hidden");
-  st.textContent="✅ AI Voice (.mp3) तैयार है!";st.className="status good";return{url:generatedMp3Url,vid};
+  lastGeneratedKey=aiCancelled?"":key;
+  const info=showGeneratedPlayer(new Blob(blobs,{type:"audio/mpeg"}),vid);
+  st.textContent="✅ AI Voice (.mp3) तैयार है!";st.className="status good";return info;
  }catch(e){
-  if(e.name==="AbortError"&&blobs.length){if(generatedMp3Url)URL.revokeObjectURL(generatedMp3Url);generatedMp3Url=URL.createObjectURL(new Blob(blobs,{type:"audio/mpeg"}));lastGeneratedKey="";$("generatedAiAudio").src=generatedMp3Url;$("generatedAudioBox").classList.remove("hidden");st.textContent="⏹ रोका गया ("+blobs.length+" हिस्से तैयार)।";return{url:generatedMp3Url,vid}}
+  if(e.name==="AbortError"&&blobs.length){
+   lastGeneratedKey="";const info=showGeneratedPlayer(new Blob(blobs,{type:"audio/mpeg"}),vid);
+   st.textContent="⏹ रोका गया ("+blobs.length+" हिस्से तैयार)।";return info;
+  }
   st.textContent="❌ "+(e.message||"Server Offline है।");st.className="status bad";return null;
  }finally{gb.disabled=db.disabled=false;aiAbort=null}
 }
 async function generateAndPlayAI(){stopScript();const r=await generateAiVoiceBlob();if(r?.url){const a=$("generatedAiAudio");a.playbackRate=1;a.currentTime=0;a.play().catch(()=>{})}}
-async function downloadAudio(){const r=await generateAiVoiceBlob();if(!r?.url)return;const v=voices.find(x=>String(x.id)===r.vid),a=document.createElement("a");a.href=r.url;a.download=(v?v.name:"voice").replace(/[^a-zA-Z0-9_-]/g,"_")+"_cloned.mp3";document.body.appendChild(a);a.click();a.remove()}
+async function downloadAudio(){
+ const r=await generateAiVoiceBlob();if(!r?.url)return;
+ const a=document.createElement("a");a.href=r.url;a.download=r.fname||"voice_studio_cloned.mp3";a.style.display="none";
+ document.body.appendChild(a);a.click();setTimeout(()=>a.remove(),2000);
+ $("memberStatus").textContent="⬇️ MP3 डाउनलोड शुरू! (न हो तो नीचे 'Save MP3 File' दबाएं या Chrome में खोलें।)";
+ $("memberStatus").className="status good";
+}
 
 function playScript(){
  const t=$("scriptText").value.trim(),lang=$("language").value,vid=$("voiceSelect").value,st=$("memberStatus");
