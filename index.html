@@ -34,11 +34,13 @@ small{color:#aab2c9;display:block;margin-top:4px}
 .note{color:#b9c1d9;font-size:13px;line-height:1.6}
 .status{color:#7ee0b2;font-size:14px;margin-top:10px}
 .bad{color:#ff8291}.good{color:#75e0ad}
-audio{width:100%;margin-top:10px}
 hr{border:0;border-top:1px solid #394566;margin:18px 0}
 footer{text-align:center;color:#7e89a9;padding:20px;font-size:12px}
 .progress-wrap{width:100%;background:#11182b;border:1px solid #465174;border-radius:10px;height:14px;overflow:hidden;margin-top:10px}
 .progress-fill{height:100%;width:0%;background:linear-gradient(90deg,#19a875,#6578ff);transition:width 0.25s}
+.voice-pill{display:flex;align-items:center;justify-content:space-between;gap:12px;background:#11182b;border:1px solid #394566;border-radius:12px;padding:10px 14px;margin-top:10px}
+.play-circle{width:40px;height:40px;border-radius:50%;background:#19a875;color:#fff;border:0;font-size:16px;display:inline-flex;align-items:center;justify-content:center;padding:0;margin:0;flex-shrink:0;cursor:pointer}
+.play-circle.playing{background:#e34d63}
 </style>
 </head>
 <body>
@@ -183,25 +185,20 @@ footer{text-align:center;color:#7e89a9;padding:20px;font-size:12px}
   <h2>🎙 Select Voice Character</h2>
   <button class="gray" style="margin-bottom:10px" onclick="openMemberDashboard()">🔄 Refresh Voices</button>
   <select id="voiceSelect" onchange="selectVoice()"><option value="">Select Voice Character</option></select>
-  <div id="memberVoiceInfo" class="status"></div>
-  <div id="samplePreview"></div>
+  <div id="sampleVoiceRow" class="voice-pill hidden">
+   <span id="memberVoiceInfo" style="font-weight:bold;color:#b7c2ff">Voice Name</span>
+   <button id="samplePlayBtn" class="play-circle" onclick="toggleSamplePlay()" title="Play / Stop Sample">▶</button>
+  </div>
  </div>
 
  <div class="card">
-  <h2>📝 Text to Speech (Voice Cloning & MP3)</h2>
+  <h2>📝 Text to Speech (Voice Cloning)</h2>
   <label>Your Script (अधिकतम 3,500 शब्द)</label>
-  <textarea id="scriptText" placeholder="यहाँ Script लिखें या Paste करें..." oninput="updateScriptWordCount()"></textarea>
+  <textarea id="scriptText" placeholder="यहाँ हिंदी या English में अपनी Script लिखें या Paste करें..." oninput="updateScriptWordCount()"></textarea>
   <small id="scriptWordCount" style="margin-top:-8px;margin-bottom:10px">Words: 0 / 3,500 • Characters: 0</small>
-  <label>Language</label>
-  <select id="language"><option value="hi-IN">Hindi</option><option value="en-US">English</option></select>
-  <div class="row">
-   <button class="green" id="generateAiBtn" onclick="generateAndPlayAI()">🎙️ Clone & Play AI Voice</button>
-   <button class="orange" id="downloadMp3Btn" onclick="downloadAudio()">⬇ Download MP3</button>
-  </div>
-  <div class="row">
-   <button class="gray" onclick="playScript()">🔊 Browser Preview (Free)</button>
-   <button class="red" onclick="stopScript()">■ Stop</button>
-  </div>
+
+  <button class="green" style="width:100%" id="generateAiBtn" onclick="generateVoiceOnly()">🎙️ Generate Voice</button>
+
   <div id="aiProgressBox" class="hidden" style="margin-top:12px">
    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
     <small id="aiProgressText" class="good" style="margin:0">तैयार हो रहा है...</small>
@@ -209,12 +206,17 @@ footer{text-align:center;color:#7e89a9;padding:20px;font-size:12px}
    </div>
    <div class="progress-wrap"><div id="aiProgressBar" class="progress-fill"></div></div>
   </div>
-  <div id="generatedAudioBox" class="hidden" style="margin-top:12px">
-   <small class="good">✅ आपकी क्लोन की हुई AI Voice तैयार है:</small>
-   <audio id="generatedAiAudio" controls></audio>
+
+  <div id="generatedAudioBox" class="voice-pill hidden">
+   <div style="flex:1;min-width:0">
+    <strong id="generatedVoiceTitle" style="color:#75e0ad;font-size:14px">✅ Generated Voice</strong>
+    <small id="generatedTimeLabel" style="margin-top:2px">0:00 / 0:00</small>
+   </div>
+   <button id="generatedPlayBtn" class="play-circle" onclick="toggleGeneratedPlay()" title="Play / Stop Voice">▶</button>
   </div>
+
+  <button class="orange" style="width:100%;margin-top:10px" id="downloadMp3Btn" onclick="downloadAudio()">⬇ Download MP3</button>
   <div id="memberStatus" class="status"></div>
-  <p class="note">3,500 शब्द तक सामान्य स्पीड में क्लोन होकर पूरी <b>.mp3</b> फाइल बनती है।</p>
  </div>
 
  <div class="card">
