@@ -289,10 +289,15 @@ function toggleGeneratedPlay(){
 async function generateAiVoiceBlob(){
  await loadSiteSettings();
  const text=$("scriptText").value.trim(),vid=$("voiceSelect").value,st=$("memberStatus");
- if(!vid)return alert("Voice Character चुनें।");if(!text)return alert("Script लिखें।");
+ if(!vid)return alert("पहले Voice Character चुनें।");
+ if(!text)return alert("कृपया अपनी Script लिखें।");
  const wc=getWords(text);if(wc>MAX_WORDS)return alert("अधिकतम "+MAX_WORDS+" शब्द ही लिखें (अभी: "+wc+")।");
  const v=voices.find(x=>String(x.id)===vid);if(!v?.audio_url)return alert("इस Character में Audio Sample नहीं है।");
- if(!aiServerUrl){st.textContent="❌ AI Cloning Server अभी बंद है (Colab चालू करें)।";st.className="status bad";return null}
+ if(!aiServerUrl){
+  st.textContent="❌ AI Cloning Server अभी बंद है (Colab चालू करें)।";st.className="status bad";
+  alert("❌ AI Cloning Server अभी बंद है! पहले Google Colab पर ▶ Run दबाकर सर्वर चालू करें।");
+  return null;
+ }
  const key=vid+"::auto::"+text;
  if(generatedMp3Url&&lastGeneratedKey===key){
   const raw=(v.name||"voice_studio").replace(/[^a-zA-Z0-9_-]/g,"").replace(/^_+|_+$/g,"")||"voice_studio";
@@ -317,17 +322,23 @@ async function generateAiVoiceBlob(){
    lastGeneratedKey="";const info=setupGeneratedPlayer(new Blob(blobs,{type:"audio/mpeg"}),vid);
    st.textContent="⏹ रोका गया ("+blobs.length+" हिस्से तैयार)।";return info;
   }
-  st.textContent="❌ "+(e.message||"Server Offline है।");st.className="status bad";return null;
+  const msg=e.message||"Colab Server Offline है।";
+  st.textContent="❌ "+msg;st.className="status bad";
+  alert("❌ "+msg+"\n(चेक करें कि Google Colab में ▶ चालू है और Telegram Bot में ⚡ Test LIVE आ रहा है।)");
+  return null;
  }finally{gb.disabled=db.disabled=false;aiAbort=null}
 }
 
-async function generateVoiceOnly(){stopAllPlayers();await generateAiVoiceBlob()}
+async function generateVoiceOnly(){try{stopAllPlayers();await generateAiVoiceBlob()}catch(e){alert("Error: "+(e?.message||e))}}
+function generateAndPlayAI(){return generateVoiceOnly()}
 
 async function downloadAudio(){
- const r=await generateAiVoiceBlob();if(!r?.url)return;
- const a=document.createElement("a");a.href=r.url;a.download=r.fname||"voice_studio_cloned.mp3";a.style.display="none";
- document.body.appendChild(a);a.click();setTimeout(()=>a.remove(),2500);
- $("memberStatus").textContent="⬇️ MP3 डाउनलोड हो रही है! (Chrome ब्राउज़र में खोलें।)";$("memberStatus").className="status good";
+ try{
+  const r=await generateAiVoiceBlob();if(!r?.url)return;
+  const a=document.createElement("a");a.href=r.url;a.download=r.fname||"voice_studio_cloned.mp3";a.style.display="none";
+  document.body.appendChild(a);a.click();setTimeout(()=>a.remove(),2500);
+  $("memberStatus").textContent="⬇️ MP3 डाउनलोड शुरू हो गई है!";$("memberStatus").className="status good";
+ }catch(e){alert("Download Error: "+(e?.message||e))}
 }
 
 async function handleOAuthOrInitialSession(s,isOAuth){
