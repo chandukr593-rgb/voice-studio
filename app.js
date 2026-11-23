@@ -1,5 +1,6 @@
 const SUPABASE_URL="https://pbffjuqifadnqdddeqwc.supabase.co",SUPABASE_KEY="sb_publishable_64rcnA_hORGgec-u-JEKHQ_3kDlGiTV",sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY),MAX_WORDS=3500;
-let voices=[],telegramUrl="",announcementText="",aiServerUrl="",colabNotebookUrl="",currentMember=null,currentUtterance=null,isRecoveryFlow=false,authSessionHandled=false,generatedMp3Url=null,lastGeneratedKey="",aiAbort=null,aiCancelled=false,activeSecret="";
+let voices=[],telegramUrl="",announcementText="",aiServerUrl="",colabNotebookUrl="",currentMember=null,isRecoveryFlow=false,authSessionHandled=false,generatedMp3Url=null,lastGeneratedKey="",aiAbort=null,aiCancelled=false,activeSecret="";
+let sampleAudio=null,sampleUrlNow="",generatedAudio=null;
 const $=id=>document.getElementById(id);
 
 function showPage(p){
@@ -7,7 +8,7 @@ function showPage(p){
  $(p).classList.remove("hidden");
  $("memberHeaderControls").classList.toggle("hidden",!(p==="memberPage"&&currentMember));
 }
-function goHome(){stopScript();stopPreview();updateHomeSessionBar();showPage("homePage")}
+function goHome(){stopAllPlayers();updateHomeSessionBar();showPage("homePage")}
 function updateHomeSessionBar(){
  const ok=currentMember&&currentMember.profile_completed;
  $("homeSessionBar").classList.toggle("hidden",!ok);
@@ -15,7 +16,7 @@ function updateHomeSessionBar(){
 }
 async function resumeSession(){if(!currentMember)return;if(!currentMember.profile_completed)return openGoogleCompletionBox(currentMember);await openMemberDashboard()}
 async function logout(){
- stopScript();stopPreview();cancelAiGeneration();
+ stopAllPlayers();cancelAiGeneration();
  if(generatedMp3Url){URL.revokeObjectURL(generatedMp3Url);generatedMp3Url=null;lastGeneratedKey=""}
  await sb.auth.signOut();currentMember=null;authSessionHandled=false;
  $("memberSettingsCard").classList.add("hidden");$("googleDetailsBox").classList.add("hidden");$("generatedAudioBox").classList.add("hidden");
@@ -58,7 +59,7 @@ async function loadSiteSettings(){
  $("telegramContactSection").classList.toggle("hidden",!telegramUrl);if(telegramUrl)$("publicTelegramLink").href=telegramUrl;
  const cl=announcementText.trim();$("memberNoticeBanner").classList.toggle("hidden",!cl);$("memberNoticeText").textContent=cl;
 }
-async function openContactPage(){stopScript();stopPreview();await loadSiteSettings();showPage("contactPage")}
+async function openContactPage(){stopAllPlayers();await loadSiteSettings();showPage("contactPage")}
 async function sendContact(){
  const name=$("contactName").value.trim(),email=$("contactEmail").value.trim(),msg=$("contactMessage").value.trim(),st=$("contactStatus"),btn=$("sendContactBtn");
  if(!name||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return alert("सही नाम और Gmail लिखें।");
@@ -191,6 +192,17 @@ async function updateMemberPassword(){
  $("editMemberNewPass").value="";$("editMemberConfirmPass").value="";st.textContent="✅ Password बदल गया!";st.className="status good";
 }
 
+function fmtSec(sec){const s=Math.max(0,Math.floor(sec||0));return Math.floor(s/60)+":"+String(s%60).padStart(2,"0")}
+function stopSampleAudio(){
+ if(sampleAudio){sampleAudio.pause();sampleAudio.currentTime=0}
+ const b=$("samplePlayBtn");if(b){b.textContent="▶";b.classList.remove("playing")}
+}
+function stopGeneratedAudio(){
+ if(generatedAudio){generatedAudio.pause();generatedAudio.currentTime=0}
+ const b=$("generatedPlayBtn");if(b){b.textContent="▶";b.classList.remove("playing")}
+}
+function stopAllPlayers(){stopSampleAudio();stopGeneratedAudio()}
+
 async function loadVoices(){const{data}=await sb.from("voices").select("*").order("created_at",{ascending:false});voices=data||[]}
 function renderMemberVoices(){
  const sel=$("voiceSelect"),prev=sel.value;sel.replaceChildren(new Option("Select Voice Character",""));
@@ -198,11 +210,25 @@ function renderMemberVoices(){
  sel.value=voices.some(v=>String(v.id)===prev)?prev:voices[0]?String(voices[0].id):"";selectVoice();
 }
 function selectVoice(){
- const v=voices.find(x=>String(x.id)===$("voiceSelect").value),pv=$("samplePreview");pv.replaceChildren();
- $("memberVoiceInfo").textContent=v?"Selected: "+v.name:"कोई Voice Character नहीं है।";
- if(v?.audio_url){const a=document.createElement("audio");a.controls=true;a.preload="none";a.src=v.audio_url;pv.appendChild(a)}
+ stopSampleAudio();
+ const v=voices.find(x=>String(x.id)===$("voiceSelect").value),row=$("sampleVoiceRow");
+ if(!v){row.classList.add("hidden");sampleUrlNow="";return}
+ row.classList.remove("hidden");$("memberVoiceInfo").textContent=v.name;sampleUrlNow=v.audio_url||"";
+ $("samplePlayBtn").classList.toggle("hidden",!sampleUrlNow);
 }
-function stopPreview(){const a=document.querySelector("#samplePreview audio");if(a){a.pause();a.currentTime=0}}
+function toggleSamplePlay(){
+ if(!sampleUrlNow)return alert("इस Voice में Sample Audio नहीं है।");
+ const b=$("samplePlayBtn");
+ if(sampleAudio&&!sampleAudio.paused){stopSampleAudio();return}
+ stopAllPlayers();
+ if(!sampleAudio||sampleAudio.src!==sampleUrlNow){
+  sampleAudio=new Audio(sampleUrlNow);
+  sampleAudio.onended=()=>stopSampleAudio();
+  sampleAudio.onerror=()=>{stopSampleAudio();alert("Sample Audio प्ले नहीं हो पाया।")};
+ }
+ sampleAudio.play().then(()=>{b.textContent="⏹";b.classList.add("playing")}).catch(()=>stopSampleAudio());
+}
+
 function updateUploadPerm(){
  const ok=!!(currentMember&&(currentMember.upload_permission||currentMember.is_admin||currentMember.is_owner));
  $("memberUploadForm").classList.toggle("hidden",!ok);
@@ -221,8 +247,9 @@ async function addMemberVoice(){
 }
 
 const getWords=t=>t.trim()?t.trim().split(/\s+/).filter(Boolean).length:0;
-function updateScriptWordCount(){const t=$("scriptText").value||"",w=getWords(t),el=$("scriptWordCount");el.textContent="Words: "+w+" / "+MAX_WORDS+" • Characters: "+t.length;el.className=w>MAX_WORDS?"bad":""}
-function splitChunks(text,max=220){
+const detectLang=s=>((s||"").match(/[\u0900-\u097F]/g)||[]).length>=2?"hi":"en";
+function updateScriptWordCount(){const t=$("scriptText").value||"",w=getWords(t),el=$("scriptWordCount");el.textContent="Words: "+w+" / "+MAX_WORDS+" • Characters: "+t.length+" • Auto: "+(detectLang(t)==="hi"?"Hindi":"English");el.className=w>MAX_WORDS?"bad":""}
+function splitChunks(text,max=140){
  const sents=text.replace(/\r\n/g,"\n").trim().split(/(?<=[।.!?\n])\s+/),out=[];let cur="";
  for(const s of sents){
   const c=s.trim();if(!c)continue;
@@ -233,78 +260,75 @@ function splitChunks(text,max=220){
 }
 function cancelAiGeneration(){aiCancelled=true;if(aiAbort){aiAbort.abort();aiAbort=null}}
 
-function showGeneratedPlayer(blob,vid){
+function setupGeneratedPlayer(blob,vid){
+ stopGeneratedAudio();
  if(generatedMp3Url)URL.revokeObjectURL(generatedMp3Url);
  generatedMp3Url=URL.createObjectURL(blob);
- const au=$("generatedAiAudio");au.src=generatedMp3Url;au.playbackRate=1;
- const box=$("generatedAudioBox");box.classList.remove("hidden");
+ generatedAudio=new Audio(generatedMp3Url);
+ generatedAudio.playbackRate=1;
+ generatedAudio.onloadedmetadata=()=>{$("generatedTimeLabel").textContent="0:00 / "+fmtSec(generatedAudio.duration)};
+ generatedAudio.ontimeupdate=()=>{$("generatedTimeLabel").textContent=fmtSec(generatedAudio.currentTime)+" / "+fmtSec(generatedAudio.duration)};
+ generatedAudio.onended=()=>stopGeneratedAudio();
  const v=voices.find(x=>String(x.id)===String(vid));
  const raw=(v?v.name:"voice_studio").replace(/[^a-zA-Z0-9_-]/g,"").replace(/^_+|_+$/g,"")||"voice_studio";
- const fname=raw+"_cloned.mp3";
- let dl=$("directMp3SaveLink");
- if(!dl){dl=document.createElement("a");dl.id="directMp3SaveLink";dl.className="btn-link orange";dl.style.width="100%";dl.style.marginTop="8px";box.appendChild(dl)}
- dl.href=generatedMp3Url;dl.download=fname;
- dl.textContent="⬇ Save MP3 File ("+Math.max(1,Math.round(blob.size/1024))+" KB)";
- return{url:generatedMp3Url,vid,fname};
+ $("generatedVoiceTitle").textContent="🎙️ "+(v?v.name:"Generated Voice")+" ("+Math.max(1,Math.round(blob.size/1024))+" KB)";
+ $("generatedTimeLabel").textContent="0:00 / 0:00";
+ $("generatedAudioBox").classList.remove("hidden");
+ return{url:generatedMp3Url,vid,fname:raw+"_cloned.mp3"};
+}
+
+function toggleGeneratedPlay(){
+ if(!generatedAudio||!generatedMp3Url)return alert("पहले Generate Voice दबाएं।");
+ const b=$("generatedPlayBtn");
+ if(!generatedAudio.paused){stopGeneratedAudio();return}
+ stopSampleAudio();
+ generatedAudio.playbackRate=1;
+ generatedAudio.play().then(()=>{b.textContent="⏹";b.classList.add("playing")}).catch(()=>stopGeneratedAudio());
 }
 
 async function generateAiVoiceBlob(){
  await loadSiteSettings();
- const text=$("scriptText").value.trim(),lang=$("language").value,vid=$("voiceSelect").value,st=$("memberStatus");
+ const text=$("scriptText").value.trim(),vid=$("voiceSelect").value,st=$("memberStatus");
  if(!vid)return alert("Voice Character चुनें।");if(!text)return alert("Script लिखें।");
  const wc=getWords(text);if(wc>MAX_WORDS)return alert("अधिकतम "+MAX_WORDS+" शब्द ही लिखें (अभी: "+wc+")।");
  const v=voices.find(x=>String(x.id)===vid);if(!v?.audio_url)return alert("इस Character में Audio Sample नहीं है।");
- if(!aiServerUrl){st.textContent="❌ AI Cloning Server अभी बंद है (Admin से चालू करवाएं या Browser Preview चलाएं)।";st.className="status bad";return null}
- const key=vid+"::"+lang+"::"+text;
+ if(!aiServerUrl){st.textContent="❌ AI Cloning Server अभी बंद है (Colab चालू करें)।";st.className="status bad";return null}
+ const key=vid+"::auto::"+text;
  if(generatedMp3Url&&lastGeneratedKey===key){
-  const dl=$("directMp3SaveLink");
-  return{url:generatedMp3Url,vid,fname:dl?dl.download:"voice_studio_cloned.mp3"};
+  const raw=(v.name||"voice_studio").replace(/[^a-zA-Z0-9_-]/g,"").replace(/^_+|_+$/g,"")||"voice_studio";
+  return{url:generatedMp3Url,vid,fname:raw+"_cloned.mp3"};
  }
- const chunks=splitChunks(text,220),blobs=[],gb=$("generateAiBtn"),db=$("downloadMp3Btn");
+ const chunks=splitChunks(text,140),blobs=[],gb=$("generateAiBtn"),db=$("downloadMp3Btn");
  aiCancelled=false;aiAbort=new AbortController();gb.disabled=db.disabled=true;$("aiProgressBox").classList.remove("hidden");$("aiProgressBar").style.width="0%";
- st.textContent="🎙️ Voice Cloning शुरू (हिस्से: "+chunks.length+")...";st.className="status";
+ st.textContent="🎙️ Voice बन रही है (हिस्से: "+chunks.length+")...";st.className="status";
  try{
   for(let i=0;i<chunks.length;i++){
    if(aiCancelled)break;const pct=Math.round((i/chunks.length)*100);$("aiProgressBar").style.width=pct+"%";$("aiProgressText").textContent="⏳ हिस्सा "+(i+1)+" / "+chunks.length+" ("+pct+"%)";
-   const r=await fetch(aiServerUrl+"/clone",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:chunks[i],language:lang.slice(0,2).toLowerCase(),speaker_url:v.audio_url}),signal:aiAbort.signal});
+   const r=await fetch(aiServerUrl+"/clone",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:chunks[i],language:detectLang(chunks[i]),speaker_url:v.audio_url}),signal:aiAbort.signal});
    if(!r.ok)throw new Error("Server Error "+r.status);blobs.push(await r.blob());
   }
   if(!blobs.length){st.textContent="⚠️ रद्द किया गया।";st.className="status bad";return null}
   $("aiProgressBar").style.width="100%";$("aiProgressText").textContent="✅ "+blobs.length+" / "+chunks.length+" हिस्से तैयार!";
   lastGeneratedKey=aiCancelled?"":key;
-  const info=showGeneratedPlayer(new Blob(blobs,{type:"audio/mpeg"}),vid);
-  st.textContent="✅ AI Voice (.mp3) तैयार है!";st.className="status good";return info;
+  const info=setupGeneratedPlayer(new Blob(blobs,{type:"audio/mpeg"}),vid);
+  st.textContent="✅ आवाज़ तैयार है! ऊपर ▶ दबाकर सुनें या Download MP3 करें।";st.className="status good";return info;
  }catch(e){
   if(e.name==="AbortError"&&blobs.length){
-   lastGeneratedKey="";const info=showGeneratedPlayer(new Blob(blobs,{type:"audio/mpeg"}),vid);
+   lastGeneratedKey="";const info=setupGeneratedPlayer(new Blob(blobs,{type:"audio/mpeg"}),vid);
    st.textContent="⏹ रोका गया ("+blobs.length+" हिस्से तैयार)।";return info;
   }
   st.textContent="❌ "+(e.message||"Server Offline है।");st.className="status bad";return null;
  }finally{gb.disabled=db.disabled=false;aiAbort=null}
 }
-async function generateAndPlayAI(){stopScript();const r=await generateAiVoiceBlob();if(r?.url){const a=$("generatedAiAudio");a.playbackRate=1;a.currentTime=0;a.play().catch(()=>{})}}
+
+async function generateVoiceOnly(){stopAllPlayers();await generateAiVoiceBlob()}
+
 async function downloadAudio(){
  const r=await generateAiVoiceBlob();if(!r?.url)return;
  const a=document.createElement("a");a.href=r.url;a.download=r.fname||"voice_studio_cloned.mp3";a.style.display="none";
- document.body.appendChild(a);a.click();setTimeout(()=>a.remove(),2000);
- $("memberStatus").textContent="⬇️ MP3 डाउनलोड शुरू! (न हो तो नीचे 'Save MP3 File' दबाएं या Chrome में खोलें।)";
- $("memberStatus").className="status good";
+ document.body.appendChild(a);a.click();setTimeout(()=>a.remove(),2500);
+ $("memberStatus").textContent="⬇️ MP3 डाउनलोड हो रही है! (Chrome ब्राउज़र में खोलें।)";$("memberStatus").className="status good";
 }
-
-function playScript(){
- const t=$("scriptText").value.trim(),lang=$("language").value,vid=$("voiceSelect").value,st=$("memberStatus");
- if(voices.length&&!vid)return alert("Voice Character चुनें।");if(!t)return alert("Script लिखें।");
- const wc=getWords(t);if(wc>MAX_WORDS)return alert("अधिकतम "+MAX_WORDS+" शब्द ही लिखें (अभी: "+wc+")।");
- if(!("speechSynthesis"in window))return alert("Browser support नहीं है।");
- speechSynthesis.cancel();st.textContent="Loading...";st.className="status";
- setTimeout(()=>{
-  currentUtterance=new SpeechSynthesisUtterance(t);currentUtterance.lang=lang;currentUtterance.rate=1;
-  const m=speechSynthesis.getVoices().find(v=>v.lang.toLowerCase().startsWith(lang.slice(0,2).toLowerCase()));if(m)currentUtterance.voice=m;
-  currentUtterance.onstart=()=>st.textContent="Browser Preview Playing...";currentUtterance.onend=()=>{st.textContent="Completed.";currentUtterance=null};
-  speechSynthesis.speak(currentUtterance);
- },60);
-}
-function stopScript(){if("speechSynthesis"in window)speechSynthesis.cancel();currentUtterance=null;const a=$("generatedAiAudio");if(a){a.pause();a.currentTime=0}$("memberStatus").textContent="Stopped."}
 
 async function handleOAuthOrInitialSession(s,isOAuth){
  if(!s?.user||isRecoveryFlow||authSessionHandled)return;authSessionHandled=true;
@@ -327,7 +351,6 @@ sb.auth.onAuthStateChange(async(ev,s)=>{
 });
 
 (async function(){
- if("speechSynthesis"in window)speechSynthesis.getVoices();
  const q=new URLSearchParams(location.search),h=new URLSearchParams(location.hash.replace(/^#/,"")),err=q.get("error_description")||h.get("error_description")||q.get("error")||h.get("error");
  if(err){alert("Login Error: "+decodeURIComponent(err.replace(/\+/g," ")));history.replaceState(null,"",location.pathname)}
  await loadSiteSettings();
