@@ -316,7 +316,7 @@ async function generateAiVoiceBlob(){
   $("aiProgressBar").style.width="100%";$("aiProgressText").textContent="✅ "+blobs.length+" / "+chunks.length+" हिस्से तैयार!";
   lastGeneratedKey=aiCancelled?"":key;
   const info=setupGeneratedPlayer(new Blob(blobs,{type:"audio/mpeg"}),vid);
-  st.textContent="✅ आवाज़ तैयार है! ऊपर ▶ दबाकर सुनें या Download MP3 करें।";st.className="status good";return info;
+  st.textContent="✅ आवाज़ तैयार है (Play हो रही है)!";st.className="status good";return info;
  }catch(e){
   if(e.name==="AbortError"&&blobs.length){
    lastGeneratedKey="";const info=setupGeneratedPlayer(new Blob(blobs,{type:"audio/mpeg"}),vid);
@@ -329,7 +329,16 @@ async function generateAiVoiceBlob(){
  }finally{gb.disabled=db.disabled=false;aiAbort=null}
 }
 
-async function generateVoiceOnly(){try{stopAllPlayers();await generateAiVoiceBlob()}catch(e){alert("Error: "+(e?.message||e))}}
+async function generateVoiceOnly(){
+ try{
+  stopAllPlayers();
+  const r=await generateAiVoiceBlob();
+  if(r?.url&&generatedAudio){
+   generatedAudio.playbackRate=1;generatedAudio.currentTime=0;
+   generatedAudio.play().then(()=>{const b=$("generatedPlayBtn");if(b){b.textContent="⏹";b.classList.add("playing")}}).catch(()=>{});
+  }
+ }catch(e){alert("Error: "+(e?.message||e))}
+}
 function generateAndPlayAI(){return generateVoiceOnly()}
 
 async function downloadAudio(){
