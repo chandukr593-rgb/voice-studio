@@ -10,6 +10,17 @@ WORK_DIR = "/tmp/voice_studio"
 SOURCE_NAME = "Kaggle" if IS_KAGGLE else "Colab"
 os.makedirs(WORK_DIR, exist_ok=True)
 
+if SYNC_SECRET:
+    try:
+        requests.post(
+            f"{SUPABASE_URL}/functions/v1/telegram-bot",
+            headers={"apikey": SUPABASE_KEY, "Content-Type": "application/json"},
+            json={"action": "server_starting", "secret": SYNC_SECRET, "source": SOURCE_NAME},
+            timeout=8,
+        )
+    except Exception:
+        pass
+
 def run(cmd):
     subprocess.run(cmd, shell=True, check=True)
 
