@@ -237,6 +237,28 @@ async function saveBrowserCred(username,password,name){
   }
  }catch(_){}
 }
+function waitForPasswordSave(statusId,sec=10){
+ return new Promise(resolve=>{
+  const el=$(statusId);
+  let left=sec,done=false,iv=null;
+  const finish=()=>{if(done)return;done=true;if(iv)clearInterval(iv);resolve()};
+  const render=()=>{
+   if(!el)return;
+   el.className="status good";
+   el.replaceChildren();
+   const sp=document.createElement("span");
+   sp.textContent="🔑 ऊपर Chrome में 'Save Password' दबाने के लिए "+left+"s... ";
+   const bt=document.createElement("button");
+   bt.type="button";bt.className="green";
+   bt.style.cssText="padding:6px 10px;font-size:12px;margin:6px 0 0 4px";
+   bt.textContent="Aage Badhein ➔";
+   bt.onclick=finish;
+   el.append(sp,bt);
+  };
+  render();
+  iv=setInterval(()=>{left--;if(left<=0)finish();else render()},1000);
+ });
+}
 async function completeGoogleSignUp(){
  if(!currentMember)return;
  const ni=$("googleName"),ui=$("googleUsername"),name=ni.value.trim(),ru=ui.value.trim(),un=ru.toLowerCase().replace(/[^a-z0-9_]/g,""),pass=$("googlePass").value,st=$("googleFinishStatus"),btn=$("googleFinishBtn");
@@ -255,12 +277,13 @@ async function completeGoogleSignUp(){
  const{error:pe}=await sb.auth.updateUser({password:pass});
  if(pe){btn.disabled=false;st.textContent="❌ "+pe.message;st.className="status bad";return}
  const pl={name,username:un,photo_url:pub.publicUrl,profile_completed:true,last_login:new Date().toISOString()};
- const{error:fe}=await sb.from("profiles").update(pl).eq("id",currentMember.id);btn.disabled=false;
- if(fe){if(fe.code==="23505"){ni.removeAttribute("readonly");st.textContent="❌ Name या Username पहले से मौजूद है!"}else st.textContent="❌ "+fe.message;st.className="status bad";return}
- await saveBrowserCred(un,pass,name);
+ const{error:fe}=await sb.from("profiles").update(pl).eq("id",currentMember.id);
+ if(fe){btn.disabled=false;if(fe.code==="23505"){ni.removeAttribute("readonly");st.textContent="❌ Name या Username पहले से मौजूद है!"}else st.textContent="❌ "+fe.message;st.className="status bad";return}
  Object.assign(currentMember,{name,username:un,photo_url:pub.publicUrl,profile_completed:true});
- $("googleDetailsBox").classList.add("hidden");$("googlePass").value="";
  fetch(SUPABASE_URL+"/functions/v1/telegram-bot",{method:"POST",headers:{"Content-Type":"application/json","apikey":SUPABASE_KEY},body:JSON.stringify({action:"member_request_notify",user_id:currentMember.id,name,username:un,email:currentMember.email,photo_url:pub.publicUrl})}).catch(()=>{});
+ await saveBrowserCred(un,pass,name);
+ await waitForPasswordSave("googleFinishStatus",10);
+ btn.disabled=false;$("googleDetailsBox").classList.add("hidden");$("googlePass").value="";st.textContent="";
  const{data:fresh}=await sb.from("profiles").select("*").eq("id",currentMember.id).maybeSingle();
  if(fresh)currentMember=fresh;
  if(currentMember.approved){await openMemberDashboard();return}
@@ -302,10 +325,11 @@ async function memberLogin(){
  btn.disabled=true;st.textContent="लॉगिन हो रहा है...";st.className="status";
  const em=await resolveEmail(inp);
  if(!em){btn.disabled=false;st.textContent="❌ अकाउंट नहीं मिला।";st.className="status bad";return}
- const{data,error}=await sb.auth.signInWithPassword({email:em,password:pw});btn.disabled=false;
- if(error){st.textContent="❌ Password गलत है।";st.className="status bad";return}
+ const{data,error}=await sb.auth.signInWithPassword({email:em,password:pw});
+ if(error){btn.disabled=false;st.textContent="❌ Password गलत है।";st.className="status bad";return}
  await saveBrowserCred(inp,pw,inp);
- $("memberPassword").value="";st.textContent="";await handleLoggedInUser(data.user.id);
+ await waitForPasswordSave("memberLoginStatus",10);
+ btn.disabled=false;$("memberPassword").value="";st.textContent="";await handleLoggedInUser(data.user.id);
 }
 function openForgotPassword(){$("forgotPasswordBox").classList.remove("hidden");$("forgotStatus").textContent="";const p=$("memberEmail").value.trim();if(p)$("forgotEmailInput").value=p}
 function closeForgotPassword(){$("forgotPasswordBox").classList.add("hidden")}
@@ -324,13 +348,17 @@ async function completePasswordReset(){
  const p1=$("resetNewPassInput").value,p2=$("resetConfirmPassInput").value,st=$("resetPassStatus");
  if(!p1||p1.length<6)return st.textContent="कम से कम 6 अक्षर लिखें।";if(p1!==p2)return st.textContent="Password मेल नहीं खाते।";
  const{error}=await sb.auth.updateUser({password:p1});if(error)return st.textContent="❌ "+error.message;
- isRecoveryFlow=false;$("resetNewPassInput").value="";$("resetConfirmPassInput").value="";$("resetPasswordBox").classList.add("hidden");history.replaceState(null,"",location.pathname);
  const{data}=await sb.auth.getUser();
  if(data?.user){
   const{data:fp}=await sb.from("profiles").select("username,name").eq("id",data.user.id).maybeSingle();
   await saveBrowserCred(fp?.username||data.user.email,p1,fp?.name);
-  alert("✅ Password बदल गया!");await handleLoggedInUser(data.user.id);
- }else alert("✅ Password बदल गया!");
+  await waitForPasswordSave("resetPassStatus",10);
+  isRecoveryFlow=false;$("resetNewPassInput").value="";$("resetConfirmPassInput").value="";$("resetPasswordBox").classList.add("hidden");history.replaceState(null,"",location.pathname);
+  await handleLoggedInUser(data.user.id);
+ }else{
+  isRecoveryFlow=false;$("resetNewPassInput").value="";$("resetConfirmPassInput").value="";$("resetPasswordBox").classList.add("hidden");history.replaceState(null,"",location.pathname);
+  alert("✅ Password बदल गया!");
+ }
 }
 
 async function handleLoggedInUser(uid){
