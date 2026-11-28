@@ -10,13 +10,15 @@ WORK_DIR = "/tmp/voice_studio"
 SOURCE_NAME = "Kaggle" if IS_KAGGLE else "Colab"
 os.makedirs(WORK_DIR, exist_ok=True)
 
-if SYNC_SECRET:
+def notify_progress(pct, stage):
+    if not SYNC_SECRET:
+        return
     try:
         requests.post(
             f"{SUPABASE_URL}/functions/v1/telegram-bot",
             headers={"apikey": SUPABASE_KEY, "Content-Type": "application/json"},
-            json={"action": "server_starting", "secret": SYNC_SECRET, "source": SOURCE_NAME},
-            timeout=8,
+            json={"action": "server_starting", "secret": SYNC_SECRET, "source": SOURCE_NAME, "pct": pct, "stage": stage},
+            timeout=6,
         )
     except Exception:
         pass
@@ -25,6 +27,7 @@ def run(cmd):
     subprocess.run(cmd, shell=True, check=True)
 
 print(f"⏳ 1/4: Setup ({SOURCE_NAME})...", flush=True)
+notify_progress(15, "Setup (ffmpeg, cloudflared)...")
 if not shutil.which("ffmpeg"):
     run("apt-get -y -qq update >/dev/null 2>&1 && apt-get -y -qq install ffmpeg >/dev/null 2>&1")
 if not shutil.which("uv"):
@@ -39,16 +42,19 @@ with open(server_path, "wb") as f:
     f.write(r_srv.content)
 
 print("⏳ 2/4: Python 3.11...", flush=True)
+notify_progress(35, "Python 3.11 Setup...")
 venv_dir = f"{WORK_DIR}/py311"
 py_bin = f"{venv_dir}/bin/python"
 run("uv python install 3.11")
 run(f"uv venv {venv_dir} --python 3.11 --clear")
 
 print("⏳ 3/4: AI Packages...", flush=True)
+notify_progress(55, "AI Packages install ho rahe hain...")
 run(f"uv pip install --python {py_bin} torch torchaudio --index-url https://download.pytorch.org/whl/cu121")
 run(f'uv pip install --python {py_bin} coqui-tts "transformers<5" fastapi uvicorn soundfile requests pydantic numpy')
 
 print("⏳ 4/4: AI Model लोड हो रहा है...", flush=True)
+notify_progress(80, "XTTS-v2 Model GPU mein load ho raha hai...")
 env = os.environ.copy()
 env["COQUI_TOS_AGREED"] = "1"
 env["TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD"] = "1"
@@ -84,6 +90,7 @@ for _ in range(180):
 if not ready:
     raise RuntimeError("AI Server चालू नहीं हुआ — ऊपर Error देखें")
 
+notify_progress(95, "Cloudflare Tunnel ban raha hai...")
 cf_log_path = f"{WORK_DIR}/cf.log"
 cf_log_file = open(cf_log_path, "w")
 cf = subprocess.Popen(["cloudflared", "tunnel", "--url", "http://127.0.0.1:8000"], stdout=cf_log_file, stderr=subprocess.STDOUT)
