@@ -181,7 +181,16 @@ footer{text-align:center;color:#7e89a9;padding:20px;font-size:12px}
   <div id="memberSettingsStatus" class="status"></div>
  </div>
 
- <div class="card">
+ <div class="card" style="border-color:#6578ff">
+  <h2>⚡ Voice Engine Mode</h2>
+  <div id="gpuServerBadge" class="note" style="margin-bottom:10px">⏳ Server Status चेक हो रहा है...</div>
+  <div class="row">
+   <button id="modeCloneBtn" class="green" onclick="setVoiceMode('clone')">🎙️ Voice Cloning (GPU)</button>
+   <button id="modeEdgeBtn" class="gray" onclick="setVoiceMode('edge')">⚡ 24×7 Fast Voices (Free)</button>
+  </div>
+ </div>
+
+ <div class="card" id="cloneVoiceCard">
   <h2>🎙 Select Voice Character</h2>
   <button class="gray" style="margin-bottom:10px" onclick="openMemberDashboard()">🔄 Refresh Voices</button>
   <select id="voiceSelect" onchange="selectVoice()"><option value="">Select Voice Character</option></select>
@@ -189,6 +198,30 @@ footer{text-align:center;color:#7e89a9;padding:20px;font-size:12px}
    <span id="memberVoiceInfo" style="font-weight:bold;color:#b7c2ff">Voice Name</span>
    <button id="samplePlayBtn" class="play-circle" onclick="toggleSamplePlay()" title="Play / Stop Sample">▶</button>
   </div>
+ </div>
+
+ <div class="card hidden" id="edgeVoiceCard">
+  <h2>⚡ 24×7 Fast AI Voices (Always On)</h2>
+  <p class="note">बिना Colab / Kaggle के 24 घंटे फ्री में हिंदी और English आवाज़ बनाएं!</p>
+  <label>आवाज़ चुनें (Voice)</label>
+  <select id="edgeVoiceSelect">
+   <option value="hi-IN-SwaraNeural">🇮🇳 Hindi — Swara (Female)</option>
+   <option value="hi-IN-MadhurNeural">🇮🇳 Hindi — Madhur (Male)</option>
+   <option value="en-IN-NeerjaNeural">🇮🇳 English India — Neerja (Female)</option>
+   <option value="en-IN-PrabhatNeural">🇮🇳 English India — Prabhat (Male)</option>
+   <option value="en-US-JennyNeural">🇺🇸 English US — Jenny (Female)</option>
+   <option value="en-US-GuyNeural">🇺🇸 English US — Guy (Male)</option>
+   <option value="en-US-AriaNeural">🇺🇸 English US — Aria (Female)</option>
+   <option value="en-US-AndrewNeural">🇺🇸 English US — Andrew (Male)</option>
+  </select>
+  <label>स्पीड (Speed)</label>
+  <select id="edgeRateSelect">
+   <option value="-20%">0.8x (Slow)</option>
+   <option value="-10%">0.9x</option>
+   <option value="+0%" selected>1.0x (Normal)</option>
+   <option value="+15%">1.15x (Fast)</option>
+   <option value="+30%">1.3x (Very Fast)</option>
+  </select>
  </div>
 
  <div class="card">
@@ -232,6 +265,6 @@ footer{text-align:center;color:#7e89a9;padding:20px;font-size:12px}
 </section>
 </div>
 <footer>Voice Studio</footer>
-<script src="app.js?v=6"></script>
+<script src="app.js?v=7"></script>
 </body>
 </html>
