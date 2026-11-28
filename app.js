@@ -1,5 +1,7 @@
 const SUPABASE_URL="https://pbffjuqifadnqdddeqwc.supabase.co",SUPABASE_KEY="sb_publishable_64rcnA_hORGgec-u-JEKHQ_3kDlGiTV",sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY),MAX_WORDS=3500;
-let voices=[],telegramUrl="",announcementText="",aiServerUrl="",colabNotebookUrl="",currentMember=null,isRecoveryFlow=false,authSessionHandled=false,generatedMp3Url=null,lastGeneratedKey="",aiAbort=null,aiCancelled=false,activeSecret="";
+const GOOGLE_CLIENT_ID="383565719071-otmjg01viggma9e4496r66tmj5u1g7cq.apps.googleusercontent.com";
+const EDGE_TTS_URL="/api/tts";
+let voices=[],telegramUrl="",announcementText="",aiServerUrl="",colabNotebookUrl="",currentMember=null,isRecoveryFlow=false,authSessionHandled=false,generatedMp3Url=null,lastGeneratedKey="",aiAbort=null,aiCancelled=false,activeSecret="",voiceMode="clone";
 let sampleAudio=null,sampleUrlNow="",generatedAudio=null;
 const $=id=>document.getElementById(id);
 
@@ -71,11 +73,25 @@ async function sendContact(){
  st.textContent="✅ संदेश भेज दिया गया है!";st.className="status good";
 }
 
+async function sha256Hex(str){
+ const buf=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(str));
+ return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("");
+}
 async function loginWithGoogle(){
  if(location.protocol==="file:"||location.origin==="null")return alert("Google Login सिर्फ Live https:// वेबसाइट पर चलता है।");
- const r=location.origin+location.pathname;
- if(self!==top){const{data,error}=await sb.auth.signInWithOAuth({provider:"google",options:{redirectTo:r,skipBrowserRedirect:true}});if(error)return alert(error.message);if(data?.url)open(data.url,"_blank");return}
- const{error}=await sb.auth.signInWithOAuth({provider:"google",options:{redirectTo:r}});if(error)alert(error.message);
+ const r=location.origin+location.pathname.replace(/index\.html$/,"");
+ if(!GOOGLE_CLIENT_ID||GOOGLE_CLIENT_ID.includes("YAHAN_APNA")){
+  if(self!==top){const{data,error}=await sb.auth.signInWithOAuth({provider:"google",options:{redirectTo:r,skipBrowserRedirect:true}});if(error)return alert(error.message);if(data?.url)open(data.url,"_blank");return}
+  const{error}=await sb.auth.signInWithOAuth({provider:"google",options:{redirectTo:r}});if(error)alert(error.message);
+  return;
+ }
+ const rawNonce=crypto.randomUUID?crypto.randomUUID():(Date.now()+"_"+Math.random().toString(36).slice(2));
+ localStorage.setItem("vs_g_nonce",rawNonce);
+ const hashedNonce=await sha256Hex(rawNonce);
+ const p=new URLSearchParams({client_id:GOOGLE_CLIENT_ID,redirect_uri:r,response_type:"id_token",scope:"openid email profile",nonce:hashedNonce,prompt:"select_account"});
+ const authUrl="https://accounts.google.com/o/oauth2/v2/auth?"+p.toString();
+ if(self!==top){open(authUrl,"_blank");return}
+ location.href=authUrl;
 }
 async function openGoogleCompletionBox(p){
  showPage("memberLogin");$("googleDetailsBox").classList.remove("hidden");
@@ -147,7 +163,7 @@ async function openMemberDashboard(){
  const{data:fp}=await sb.from("profiles").select("*").eq("id",currentMember.id).maybeSingle();
  if(fp){if(fp.banned){alert("आपका अकाउंट Ban हो गया है।");return logout()}currentMember=fp}
  $("memberSettingsCard").classList.add("hidden");refreshMemberUI();showPage("memberPage");
- await Promise.all([loadVoices(),loadSiteSettings()]);renderMemberVoices();updateUploadPerm();updateScriptWordCount();
+ await Promise.all([loadVoices(),loadSiteSettings()]);renderMemberVoices();updateUploadPerm();updateScriptWordCount();checkGpuServerStatus();
 }
 function refreshMemberUI(){
  if(!currentMember)return;
@@ -260,6 +276,25 @@ function splitChunks(text,max=140){
 }
 function cancelAiGeneration(){aiCancelled=true;if(aiAbort){aiAbort.abort();aiAbort=null}}
 
+function setVoiceMode(mode){
+ voiceMode=mode==="edge"?"edge":"clone";
+ $("cloneVoiceCard").classList.toggle("hidden",voiceMode!=="clone");
+ $("edgeVoiceCard").classList.toggle("hidden",voiceMode!=="edge");
+ $("modeCloneBtn").className=voiceMode==="clone"?"green":"gray";
+ $("modeEdgeBtn").className=voiceMode==="edge"?"green":"gray";
+ stopAllPlayers();
+}
+async function checkGpuServerStatus(){
+ const b=$("gpuServerBadge");if(!b)return;
+ if(!aiServerUrl){b.innerHTML="🔴 Voice Cloning Server अभी बंद है — आप <b>⚡ 24×7 Fast Voices</b> इस्तेमाल कर सकते हैं!";b.className="status bad";return}
+ try{
+  const ctrl=new AbortController();setTimeout(()=>ctrl.abort(),4000);
+  const r=await fetch(aiServerUrl+"/health",{signal:ctrl.signal}),j=await r.json();
+  if(r.ok&&j.status==="ok"){b.innerHTML="🟢 Voice Cloning Server <b>LIVE</b> है!";b.className="status good";return}
+ }catch(_){}
+ b.innerHTML="🔴 Voice Cloning Server अभी Offline है — <b>⚡ 24×7 Fast Voices</b> हमेशा चालू है!";b.className="status bad";
+}
+
 function setupGeneratedPlayer(blob,vid){
  stopGeneratedAudio();
  if(generatedMp3Url)URL.revokeObjectURL(generatedMp3Url);
@@ -269,12 +304,13 @@ function setupGeneratedPlayer(blob,vid){
  generatedAudio.onloadedmetadata=()=>{$("generatedTimeLabel").textContent="0:00 / "+fmtSec(generatedAudio.duration)};
  generatedAudio.ontimeupdate=()=>{$("generatedTimeLabel").textContent=fmtSec(generatedAudio.currentTime)+" / "+fmtSec(generatedAudio.duration)};
  generatedAudio.onended=()=>stopGeneratedAudio();
- const v=voices.find(x=>String(x.id)===String(vid));
+ const isEdge=String(vid).startsWith("edge:");
+ const v=isEdge?null:voices.find(x=>String(x.id)===String(vid));
  const raw=(v?v.name:"voice_studio").replace(/[^a-zA-Z0-9_-]/g,"").replace(/^_+|_+$/g,"")||"voice_studio";
- $("generatedVoiceTitle").textContent="🎙️ "+(v?v.name:"Generated Voice")+" ("+Math.max(1,Math.round(blob.size/1024))+" KB)";
+ $("generatedVoiceTitle").textContent=(isEdge?"⚡ Edge TTS":"🎙️ "+(v?v.name:"Generated Voice"))+" ("+Math.max(1,Math.round(blob.size/1024))+" KB)";
  $("generatedTimeLabel").textContent="0:00 / 0:00";
  $("generatedAudioBox").classList.remove("hidden");
- return{url:generatedMp3Url,vid,fname:raw+"_cloned.mp3"};
+ return{url:generatedMp3Url,vid,fname:isEdge?"voice_studio_edge.mp3":raw+"_cloned.mp3"};
 }
 
 function toggleGeneratedPlay(){
@@ -287,15 +323,43 @@ function toggleGeneratedPlay(){
 }
 
 async function generateAiVoiceBlob(){
- await loadSiteSettings();
- const text=$("scriptText").value.trim(),vid=$("voiceSelect").value,st=$("memberStatus");
- if(!vid)return alert("पहले Voice Character चुनें।");
+ const text=$("scriptText").value.trim(),st=$("memberStatus");
  if(!text)return alert("कृपया अपनी Script लिखें।");
  const wc=getWords(text);if(wc>MAX_WORDS)return alert("अधिकतम "+MAX_WORDS+" शब्द ही लिखें (अभी: "+wc+")।");
+
+ if(voiceMode==="edge"){
+  const ev=$("edgeVoiceSelect").value,er=$("edgeRateSelect").value,key="edge::"+ev+"::"+er+"::"+text;
+  if(generatedMp3Url&&lastGeneratedKey===key)return{url:generatedMp3Url,vid:"edge:"+ev,fname:"voice_studio_edge.mp3"};
+  const chunks=splitChunks(text,350),blobs=[],gb=$("generateAiBtn"),db=$("downloadMp3Btn");
+  aiCancelled=false;aiAbort=new AbortController();gb.disabled=db.disabled=true;$("aiProgressBox").classList.remove("hidden");$("aiProgressBar").style.width="0%";
+  st.textContent="⚡ 24×7 Fast Voice बन रही है (हिस्से: "+chunks.length+")...";st.className="status";
+  try{
+   for(let i=0;i<chunks.length;i++){
+    if(aiCancelled)break;const pct=Math.round((i/chunks.length)*100);$("aiProgressBar").style.width=pct+"%";$("aiProgressText").textContent="⏳ हिस्सा "+(i+1)+" / "+chunks.length+" ("+pct+"%)";
+    const r=await fetch(EDGE_TTS_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:chunks[i],voice:ev,rate:er,pitch:"+0Hz"}),signal:aiAbort.signal});
+    if(!r.ok)throw new Error("TTS Error "+r.status);blobs.push(await r.blob());
+   }
+   if(!blobs.length){st.textContent="⚠️ रद्द किया गया।";st.className="status bad";return null}
+   $("aiProgressBar").style.width="100%";$("aiProgressText").textContent="✅ "+blobs.length+" / "+chunks.length+" हिस्से तैयार!";
+   lastGeneratedKey=aiCancelled?"":key;
+   const info=setupGeneratedPlayer(new Blob(blobs,{type:"audio/mpeg"}),"edge:"+ev);
+   st.textContent="✅ आवाज़ तैयार है (Play हो रही है)!";st.className="status good";return info;
+  }catch(e){
+   if(e.name==="AbortError"&&blobs.length){
+    lastGeneratedKey="";const info=setupGeneratedPlayer(new Blob(blobs,{type:"audio/mpeg"}),"edge:"+ev);
+    st.textContent="⏹ रोका गया ("+blobs.length+" हिस्से तैयार)।";return info;
+   }
+   st.textContent="❌ "+(e.message||"Edge TTS Error");st.className="status bad";return null;
+  }finally{gb.disabled=db.disabled=false;aiAbort=null}
+ }
+
+ await loadSiteSettings();checkGpuServerStatus();
+ const vid=$("voiceSelect").value;
+ if(!vid)return alert("पहले Voice Character चुनें।");
  const v=voices.find(x=>String(x.id)===vid);if(!v?.audio_url)return alert("इस Character में Audio Sample नहीं है।");
  if(!aiServerUrl){
-  st.textContent="❌ AI Cloning Server अभी बंद है (Colab चालू करें)।";st.className="status bad";
-  alert("❌ AI Cloning Server अभी बंद है! पहले Google Colab पर ▶ Run दबाकर सर्वर चालू करें।");
+  st.textContent="❌ AI Cloning Server अभी बंद है — ⚡ 24×7 Fast Voices चुनें।";st.className="status bad";
+  if(confirm("❌ AI Cloning Server अभी बंद है!\n\nक्या आप अभी ⚡ 24×7 Fast Voices इस्तेमाल करना चाहते हैं?"))setVoiceMode("edge");
   return null;
  }
  const key=vid+"::auto::"+text;
@@ -324,7 +388,7 @@ async function generateAiVoiceBlob(){
   }
   const msg=e.message||"Colab Server Offline है।";
   st.textContent="❌ "+msg;st.className="status bad";
-  alert("❌ "+msg+"\n(चेक करें कि Google Colab में ▶ चालू है और Telegram Bot में ⚡ Test LIVE आ रहा है।)");
+  if(confirm("❌ "+msg+"\n\nक्या आप अभी ⚡ 24×7 Fast Voices इस्तेमाल करना चाहते हैं?"))setVoiceMode("edge");
   return null;
  }finally{gb.disabled=db.disabled=false;aiAbort=null}
 }
@@ -377,5 +441,14 @@ sb.auth.onAuthStateChange(async(ev,s)=>{
  const cp=q.get("admin_colab");
  if(cp){const{data:ok}=await sb.rpc("verify_colab_magic_token",{p_secret:cp});if(ok){activeSecret=cp;refreshHelperPageUI();showPage("noLoginColabPage");return}alert("⛔ Invalid Colab Link");history.replaceState(null,"",location.pathname)}
  if(location.hash.includes("type=recovery")||q.get("type")==="recovery"){isRecoveryFlow=true;showPage("memberLogin");$("resetPasswordBox").classList.remove("hidden");return}
+ const idToken=h.get("id_token");
+ if(idToken){
+  const rawNonce=localStorage.getItem("vs_g_nonce")||"";
+  localStorage.removeItem("vs_g_nonce");
+  history.replaceState(null,"",location.pathname);
+  const{data,error}=await sb.auth.signInWithIdToken({provider:"google",token:idToken,nonce:rawNonce||undefined});
+  if(error){alert("Google Login Error: "+error.message);return}
+  if(data?.session){await handleOAuthOrInitialSession(data.session,true);return}
+ }
  const{data:{session}}=await sb.auth.getSession();if(session)await handleOAuthOrInitialSession(session,location.hash.includes("access_token")||location.search.includes("code="));
 })();
